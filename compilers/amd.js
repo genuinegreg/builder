@@ -43,13 +43,19 @@ AMDDependenciesTransformer.prototype.filterAMDDeps = function(deps) {
 // these are the same rules of the r.js optimizer
 
 // var define disables until we quit the existing scope
-AMDDependenciesTransformer.prototype.transformVariableDeclaration = function(tree) {
+AMDDependenciesTransformer.prototype.transformVariableDeclaration = function (tree) {
+
+  // console.error('transformVariableDeclaration tree', tree);
+
   if (tree.lvalue.identifierToken && tree.lvalue.identifierToken.value == 'define')
     this.defineRedefined = true;
   return tree;
 };
 // this catches the scope exit, although should be better handled than this (eg blocks for ES6)
-AMDDependenciesTransformer.prototype.transformFunctionDeclaration = function(tree) {
+AMDDependenciesTransformer.prototype.transformFunctionDeclaration = function (tree) {
+
+  // console.error('transformFunctionDeclaration tree', tree);
+
   var defineRedefined = this.defineRedefined;
   tree = ParseTreeTransformer.prototype.transformFunctionDeclaration.call(this, tree);
   if (defineRedefined === false)
@@ -127,7 +133,15 @@ AMDDependenciesTransformer.prototype.transformCallExpression = function(tree) {
     return ParseTreeTransformer.prototype.transformCallExpression.call(this, tree);
 
   if (depArg != -1) {
-    var deps = args[depArg].elements.map(function(dep) {
+    var deps = args[depArg].elements.map(function (dep) {
+
+      // if (!dep.literalToken) {
+      //   console.log('yolo plop', dep);
+      // }
+      // else {
+      //   console.log('yolo plop', dep.literalToken);
+      // }
+
       return dep.literalToken.processedValue;
     });
 
@@ -294,9 +308,40 @@ exports.attach = function(loader) {
         // extract AMD dependencies using tree parsing
         // NB can remove after Traceur 0.0.77
         if (!load.source) load.source = ' ';
-        var compiler = new traceur.Compiler({ script: true, sourceRoot: true });
+
+
+        var regexp = /(?:\s*''\s*\+\s*)?(?:file2?|vassets)\(\s*(?:'(.+?)'|undefined|null)\s*(?:,\s*'(.+?)'\s*)?(?:,\s*(?:true|false)\s*)?\)/g;
+        var fileReplace = function (match, g1, g2, offset, string) {
+
+          // console.warn('match', match);
+          // console.warn('args', g1, g2);
+          return "'" + file(g1, g2) + "'";
+        }
+
+        if (load.source.match(regexp) && load.name.match(/vcg\.filter\.duration\.js/)) {
+          console.log('before', load.source);
+          console.log('after', load.source.replace(regexp, fileReplace));
+        }
+
+        load.source = load.source.replace(regexp, fileReplace);
+
+        // if (load.source.match(regexp) && load.name.match(/vcg\.js/)) {
+        // 	console.log('after', load.source);
+        // }
+
+
+        // console.log('parse Tree', load);
+
+
+        var compiler = new traceur.Compiler({script: true, sourceRoot: true});
         load.metadata.parseTree = compiler.parse(load.source, load.path);
         var depTransformer = new AMDDependenciesTransformer();
+
+
+        // load.metadata.parseTree.location.start.source.contents.replace(regexp, fileReplace())
+
+        // console.log('load.metadata.parseTree scriptItemList', load.metadata.parseTree.scriptItemList);
+
         depTransformer.transformAny(load.metadata.parseTree);
 
         // we store the results as meta
